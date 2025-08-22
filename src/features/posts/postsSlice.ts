@@ -1,7 +1,19 @@
 import { createSlice, nanoid, PayloadAction } from '@reduxjs/toolkit'
-import { sub } from 'date-fns'
 import { userLoggedOut } from '@/features/auth/authSlice'
+import { client } from '@/api/client'
+import { createAppAsyncThunk } from '@/app/withTypes'
 
+interface PostsState {
+  posts: Post[]
+  status: 'idle' | 'pending' | 'succeeded' | 'failed'
+  error: string | null
+}
+
+const initialState: PostsState = {
+  posts: [],
+  status: 'idle',
+  error: null
+}
 export interface Reactions {
   thumbsUp: number
   tada: number
@@ -22,8 +34,6 @@ export interface Post {
   reactions: Reactions
 }
 
-type PostUpdate = Pick<Post, 'id' | 'title' | 'content'>
-
 const initialReactions: Reactions = {
   thumbsUp: 0,
   tada: 0,
@@ -32,53 +42,44 @@ const initialReactions: Reactions = {
   eyes: 0
 }
 
-// Create an initial state value for the reducer, with that type
-const initialState: Post[] = [
-  {
-    id: '1', 
-    title: 'First Post!', 
-    content: 'Hello!', 
-    user: '0', 
-    date: sub(new Date(), { minutes: 10 }).toISOString(),
-    reactions: initialReactions
+type PostUpdate = Pick<Post, 'id' | 'title' | 'content'>
+type NewPost = Pick<Post, 'title' | 'content' | 'user'>
+
+export const addNewPost = createAppAsyncThunk(
+  'posts/addNewPost',
+  // The payload creator receives the partial `{title, content, user}` object
+  async (initialPost: NewPost) => {
+    // We send the initial data to the fake API server
+    const response = await client.post<Post>('/fakeApi/posts', initialPost)
+    // The response includes the complete post object, including unique ID
+    return response.data
+  }
+)
+
+export const fetchPosts = createAppAsyncThunk(
+  'posts/fetchPosts',
+  async () => {
+    const response = await client.get<Post[]>('/fakeApi/posts')
+    return response.data
   },
   {
-    id: '2', 
-    title: 'Second Post', 
-    content: 'More text', 
-    user: '2', 
-    date: sub(new Date(), { minutes: 5 }).toISOString(),
-    reactions: initialReactions
+    condition(arg, thunkApi) {
+      const postsStatus = selectPostsStatus(thunkApi.getState())
+      if (postsStatus !== 'idle') {
+        return false
+      }
+    }
   }
-]
+)
 
 // Create the slice and pass in the initial state
 const postsSlice = createSlice({
   name: 'posts',
   initialState,
   reducers: {
-    // Declare a "case reducer" named `postAdded`.
-    // The type of `action.payload` will be a `Post` object.
-    postAdded: {
-      reducer(state, action: PayloadAction<Post>) {
-        state.push(action.payload)
-      },
-      prepare(title: string, content: string, userId: string) {
-        return {
-          payload: {
-            id: nanoid(),
-            date: new Date().toISOString(),
-            title,
-            content,
-            user: userId,
-            reactions: initialReactions
-          }
-        }
-      }
-    },
     postUpdated(state, action: PayloadAction<PostUpdate>) {
       const { id, title, content } = action.payload
-      const existingPost = state.find(post => post.id === id)
+      const existingPost = state.posts.find(post => post.id === id)
       if (existingPost) {
         existingPost.title = title
         existingPost.content = content
@@ -89,7 +90,7 @@ const postsSlice = createSlice({
       action: PayloadAction<{ postId: string; reaction: ReactionName }>
     ) {
       const { postId, reaction } = action.payload
-      const existingPost = state.find(post => post.id === postId)
+      const existingPost = state.posts.find(post => post.id === postId)
       if (existingPost) {
         existingPost.reactions[reaction]++
       }
@@ -99,21 +100,39 @@ const postsSlice = createSlice({
     // Pass the action creator to `builder.addCase()`
     builder.addCase(userLoggedOut, (state) => {
       // Clear out the list of posts whenever the user logs out
-      return []
+      return initialState
     })
+    .addCase(fetchPosts.pending, (state, action) => {
+      state.status = 'pending'
+    })
+    .addCase(fetchPosts.fulfilled, (state, action) => {
+      state.status = 'succeeded'
+      // Add any fetched posts to the array
+      state.posts.push(...action.payload)
+    })
+    .addCase(fetchPosts.rejected, (state, action) => {
+      state.status = 'failed'
+      state.error = action.error.message ?? 'Unknown Error'
+    })
+    .addCase(addNewPost.fulfilled, (state, action) => {
+        // We can directly add the new post object to our posts array
+        state.posts.push(action.payload)
+      })
   },
   selectors: {
     // Note that these selectors are given just the `PostsState`
     // as an argument, not the entire `RootState`
-    selectAllPosts: postsState => postsState,
-    selectPostById: (postsState, postId: string) => {
-      return postsState.find(post => post.id === postId)
-    }
+    selectAllPosts: state => state.posts,
+    selectPostById: (state, postId: string) => {
+      return state.posts.find(post => post.id === postId)
+    },
+    selectPostsStatus: state => state.status,
+    selectPostsError: state => state.error
   }
 })
 
-export const { selectAllPosts, selectPostById } = postsSlice.selectors
+export const { selectAllPosts, selectPostById, selectPostsStatus, selectPostsError } = postsSlice.selectors
 // Export the auto-generated action creator with the same name
-export const { postAdded, postUpdated, reactionAdded } = postsSlice.actions
+export const { postUpdated, reactionAdded } = postsSlice.actions
 // Export the generated reducer function
 export default postsSlice.reducer
