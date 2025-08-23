@@ -1,7 +1,8 @@
 import { createSlice, nanoid, PayloadAction } from '@reduxjs/toolkit'
-import { userLoggedOut } from '@/features/auth/authSlice'
+import { logout } from '@/features/auth/authSlice'
 import { client } from '@/api/client'
 import { createAppAsyncThunk } from '@/app/withTypes'
+import { RootState } from '@/app/store'
 
 interface PostsState {
   posts: Post[]
@@ -98,9 +99,11 @@ const postsSlice = createSlice({
   },
   extraReducers: (builder) => {
     // Pass the action creator to `builder.addCase()`
-    builder.addCase(userLoggedOut, (state) => {
-      // Clear out the list of posts whenever the user logs out
-      return initialState
+    builder      
+    // switch to handle the thunk fulfilled action
+    .addCase(logout.fulfilled, state => {
+        // Clear out the list of posts whenever the user logs out
+        return initialState
     })
     .addCase(fetchPosts.pending, (state, action) => {
       state.status = 'pending'
@@ -130,6 +133,12 @@ const postsSlice = createSlice({
     selectPostsError: state => state.error
   }
 })
+
+export const selectPostsByUser = (state: RootState, userId: string) => {
+  const allPosts = selectAllPosts(state)
+  // ❌ This seems suspicious! See more details below
+  return allPosts.filter(post => post.user === userId)
+}
 
 export const { selectAllPosts, selectPostById, selectPostsStatus, selectPostsError } = postsSlice.selectors
 // Export the auto-generated action creator with the same name
