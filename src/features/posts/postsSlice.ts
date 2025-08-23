@@ -1,20 +1,30 @@
-import { createSlice, nanoid, PayloadAction } from '@reduxjs/toolkit'
+import { 
+  createSelector, 
+  createSlice, 
+  PayloadAction,
+  createEntityAdapter,
+  EntityState
+} from '@reduxjs/toolkit'
 import { logout } from '@/features/auth/authSlice'
 import { client } from '@/api/client'
 import { createAppAsyncThunk } from '@/app/withTypes'
 import { RootState } from '@/app/store'
+import { AppStartListening } from '@/app/listenerMiddleware'
 
-interface PostsState {
-  posts: Post[]
-  status: 'idle' | 'pending' | 'succeeded' | 'failed'
+interface PostsState extends EntityState<Post, string> {
+  status: 'idle' | 'pending' | 'succeeded' | 'rejected'
   error: string | null
 }
 
-const initialState: PostsState = {
-  posts: [],
+const postsAdapter = createEntityAdapter<Post>({
+  // Sort in descending date order
+  sortComparer: (a, b) => b.date.localeCompare(a.date)
+})
+
+const initialState: PostsState = postsAdapter.getInitialState({
   status: 'idle',
   error: null
-}
+})
 export interface Reactions {
   thumbsUp: number
   tada: number
@@ -80,18 +90,14 @@ const postsSlice = createSlice({
   reducers: {
     postUpdated(state, action: PayloadAction<PostUpdate>) {
       const { id, title, content } = action.payload
-      const existingPost = state.posts.find(post => post.id === id)
-      if (existingPost) {
-        existingPost.title = title
-        existingPost.content = content
-      }
+      postsAdapter.updateOne(state, { id, changes: { title, content } })
     },
     reactionAdded(
       state,
       action: PayloadAction<{ postId: string; reaction: ReactionName }>
     ) {
       const { postId, reaction } = action.payload
-      const existingPost = state.posts.find(post => post.id === postId)
+      const existingPost = state.entities[postId]
       if (existingPost) {
         existingPost.reactions[reaction]++
       }
@@ -110,38 +116,48 @@ const postsSlice = createSlice({
     })
     .addCase(fetchPosts.fulfilled, (state, action) => {
       state.status = 'succeeded'
-      // Add any fetched posts to the array
-      state.posts.push(...action.payload)
+        // Save the fetched posts into state
+        postsAdapter.setAll(state, action.payload)
     })
     .addCase(fetchPosts.rejected, (state, action) => {
-      state.status = 'failed'
+      state.status = 'rejected'
       state.error = action.error.message ?? 'Unknown Error'
     })
-    .addCase(addNewPost.fulfilled, (state, action) => {
-        // We can directly add the new post object to our posts array
-        state.posts.push(action.payload)
-      })
+    .addCase(addNewPost.fulfilled, postsAdapter.addOne)
   },
-  selectors: {
-    // Note that these selectors are given just the `PostsState`
-    // as an argument, not the entire `RootState`
-    selectAllPosts: state => state.posts,
-    selectPostById: (state, postId: string) => {
-      return state.posts.find(post => post.id === postId)
-    },
-    selectPostsStatus: state => state.status,
-    selectPostsError: state => state.error
-  }
 })
 
-export const selectPostsByUser = (state: RootState, userId: string) => {
-  const allPosts = selectAllPosts(state)
-  // ❌ This seems suspicious! See more details below
-  return allPosts.filter(post => post.user === userId)
-}
-
-export const { selectAllPosts, selectPostById, selectPostsStatus, selectPostsError } = postsSlice.selectors
-// Export the auto-generated action creator with the same name
 export const { postUpdated, reactionAdded } = postsSlice.actions
-// Export the generated reducer function
+
 export default postsSlice.reducer
+
+export const {
+  selectAll: selectAllPosts,
+  selectById: selectPostById,
+  selectIds: selectPostIds,
+} = postsAdapter.getSelectors((state: RootState) => state.posts)
+
+export const selectPostsByUser = createSelector(
+  [selectAllPosts, (state: RootState, userId: string) => userId],
+  (posts, userId) => posts.filter((post) => post.user === userId),
+)
+export const selectPostsStatus = (state: RootState) => state.posts.status
+export const selectPostsError = (state: RootState) => state.posts.error
+
+export const addPostsListeners = (startAppListening: AppStartListening) => {
+  startAppListening({
+    actionCreator: addNewPost.fulfilled,
+    effect: async (action, listenerApi) => {
+      const { toast } = await import('react-tiny-toast')
+
+      const toastId = toast.show('New post added!', {
+        variant: 'success',
+        position: 'bottom-right',
+        pause: true
+      })
+
+      await listenerApi.delay(5000)
+      toast.remove(toastId)
+    }
+  })
+}
