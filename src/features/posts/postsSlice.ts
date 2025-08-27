@@ -53,7 +53,7 @@ const initialReactions: Reactions = {
   eyes: 0
 }
 
-type PostUpdate = Pick<Post, 'id' | 'title' | 'content'>
+export type PostUpdate = Pick<Post, 'id' | 'title' | 'content'>
 export type NewPost = Pick<Post, 'title' | 'content' | 'user'>
 
 export const addNewPost = createAppAsyncThunk(
