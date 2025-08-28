@@ -10,6 +10,7 @@ import { client } from '@/api/client'
 import { createAppAsyncThunk } from '@/app/withTypes'
 import { RootState } from '@/app/store'
 import { AppStartListening } from '@/app/listenerMiddleware'
+import { apiSlice } from '@/features/api/apiSlice'
 
 interface PostsState extends EntityState<Post, string> {
   status: 'idle' | 'pending' | 'succeeded' | 'rejected'
@@ -146,7 +147,7 @@ export const selectPostsError = (state: RootState) => state.posts.error
 
 export const addPostsListeners = (startAppListening: AppStartListening) => {
   startAppListening({
-    actionCreator: addNewPost.fulfilled,
+    matcher: apiSlice.endpoints.addNewPost.matchFulfilled,
     effect: async (action, listenerApi) => {
       const { toast } = await import('react-tiny-toast')
 
