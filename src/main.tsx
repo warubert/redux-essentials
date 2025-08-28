@@ -4,7 +4,7 @@ import { Provider } from 'react-redux'
 import App from './App'
 import { store } from './app/store'
 import { worker } from './api/server'
-import { fetchUsers } from './features/users/usersSlice'
+import { apiSliceWithUsers } from './features/users/usersSlice'
 import { apiSlice } from './features/api/apiSlice'
 
 import './primitiveui.css'
@@ -16,7 +16,7 @@ async function start() {
   await worker.start({ onUnhandledRequest: 'bypass' })
 
   // store.dispatch(fetchUsers())
-  store.dispatch(apiSlice.endpoints.getUsers.initiate())
+  store.dispatch(apiSliceWithUsers.endpoints.getUsers.initiate())
 
   const root = createRoot(document.getElementById('root')!)
 
