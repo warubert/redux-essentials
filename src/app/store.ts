@@ -1,23 +1,22 @@
+import { Action, ThunkAction, configureStore } from '@reduxjs/toolkit'
 
-import { configureStore } from '@reduxjs/toolkit'
-import postsReducer from '@/features/posts/postsSlice'
-import authReducer from '@/features/auth/authSlice'
-import notificationsReducer from '@/features/notifications/notificationsSlice'
-import { listenerMiddleware } from './listenerMiddleware'
 import { apiSlice } from '@/features/api/apiSlice'
+import authReducer from '@/features/auth/authSlice'
+import postsReducer from '@/features/posts/postsSlice'
+import notificationsReducer from '@/features/notifications/notificationsSlice'
+
+import { listenerMiddleware } from './listenerMiddleware'
 
 export const store = configureStore({
   reducer: {
-    posts: postsReducer,
     auth: authReducer,
+    posts: postsReducer,
     notifications: notificationsReducer,
-    [apiSlice.reducerPath]: apiSlice.reducer
+    [apiSlice.reducerPath]: apiSlice.reducer,
   },
-  middleware: getDefaultMiddleware =>
-    getDefaultMiddleware()
-      .prepend(listenerMiddleware.middleware)
-      .concat(apiSlice.middleware)
-  })
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware().prepend(listenerMiddleware.middleware).concat(apiSlice.middleware),
+})
 
 // Infer the type of `store`
 export type AppStore = typeof store
@@ -25,3 +24,5 @@ export type AppStore = typeof store
 export type AppDispatch = typeof store.dispatch
 // Same for the `RootState` type
 export type RootState = ReturnType<typeof store.getState>
+// Export a reusable type for handwritten thunks
+export type AppThunk = ThunkAction<void, RootState, unknown, Action>
